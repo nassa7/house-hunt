@@ -186,21 +186,45 @@ async function boot(){
 }
 
 function renderLogin(msg){
+  // Password first, magic link second. Supabase's built-in email service only
+  // allows a couple of messages an hour, so relying on emailed links makes the
+  // app unusable the moment you sign out twice in a day.
   root.innerHTML = '<div class="login"><div class="login-card">' +
     '<h1>House Hunt</h1>' +
-    '<p>Enter your email and we will send you a sign-in link. No password needed.</p>' +
+    '<p>Sign in to see the search.</p>' +
     '<input id="email" type="email" placeholder="you@example.com" autocomplete="email">' +
-    '<button class="btn" id="send">Send me a link</button>' +
-    '<div class="note-msg" id="msg">' + esc(msg || "") + '</div></div></div>';
-  document.querySelector("#send").onclick = async () => {
+    '<input id="pw" type="password" placeholder="Password" autocomplete="current-password">' +
+    '<button class="btn" id="signin">Sign in</button>' +
+    '<div class="note-msg" id="msg">' + esc(msg || "") + '</div>' +
+    '<div class="note-msg"><a href="#" id="magic">Email me a link instead</a></div>' +
+    '</div></div>';
+
+  const msgEl = () => document.querySelector("#msg");
+
+  document.querySelector("#signin").onclick = async () => {
     const email = document.querySelector("#email").value.trim();
-    if (!email) return;
-    document.querySelector("#msg").textContent = "Sending…";
+    const password = document.querySelector("#pw").value;
+    if (!email || !password) { msgEl().textContent = "Email and password, please."; return; }
+    msgEl().textContent = "Signing in…";
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) msgEl().textContent = error.message;
+  };
+
+  document.querySelector("#pw").onkeydown = e => {
+    if (e.key === "Enter") document.querySelector("#signin").click(); };
+
+  document.querySelector("#magic").onclick = async (e) => {
+    e.preventDefault();
+    const email = document.querySelector("#email").value.trim();
+    if (!email) { msgEl().textContent = "Enter your email first."; return; }
+    msgEl().textContent = "Sending…";
     const { error } = await sb.auth.signInWithOtp({
       email, options:{ emailRedirectTo: location.href.split("#")[0] } });
-    document.querySelector("#msg").textContent = error
-      ? error.message
-      : "Check your email - the link signs you straight in. It can land in spam.";
+    msgEl().textContent = error
+      ? (error.message.indexOf("rate limit") !== -1
+          ? "Too many emails in the last hour - use your password, or wait a while."
+          : error.message)
+      : "Check your email. It can land in spam.";
   };
 }
 
