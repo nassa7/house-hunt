@@ -77,8 +77,19 @@ h1.title{font-size:16px;margin:0;letter-spacing:-.01em}
   .filters select{width:auto;max-width:230px}
 }
 
-main{padding:14px;max-width:1500px;margin:0 auto}
-.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+main{padding:14px;max-width:1600px;margin:0 auto}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+/* Keep the header controls lined up with the cards on a wide screen instead of
+   stretching across the whole monitor. */
+header > *{max-width:1600px;margin-left:auto;margin-right:auto}
+@media (min-width:1100px){
+  main{padding:20px}
+  .grid{gap:18px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+  .card{border-radius:16px}
+  body{font-size:15.5px}
+}
+/* Arrows only make sense with a pointer; on touch you swipe. */
+@media (hover:none){ .nav{display:none} }
 .area{grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.07em;
   text-transform:uppercase;color:var(--muted);margin:10px 2px 0;display:flex;gap:10px;align-items:center}
 .area::after{content:"";flex:1;height:1px;background:var(--line)}
@@ -267,7 +278,10 @@ const CARD_COLUMNS = [
   "days_listed","my_verdict","verdicts","liked_count","hidden",
 ].join(",");
 
-const PAGE = 600;
+// 60, not 600. The payload was only half the problem: 600 cards with up to ten
+// photos each is ~6,000 <img> elements, which exhausts a phone's memory no
+// matter how small the JSON was. Paging keeps the DOM small.
+const PAGE = 60;
 
 async function load(){
   let q = sb.from("properties_app").select(CARD_COLUMNS);
@@ -459,10 +473,12 @@ function card(r,i){
   const cls = (r.score||0) >= 75 ? "s-hi" : (r.score||0) >= 65 ? "s-mid" : "s-lo";
   const pics = (r.images || []).slice(0,10);
 
+  // Only the cover photo becomes an <img>. The rest of the gallery is carried
+  // as a data attribute and created when you actually swipe to it - otherwise
+  // a page of cards is thousands of image elements.
   let h = '<div class="card' + (r.my_verdict==="binned" ? " dim" : "") + '" id="c' + i + '">';
-  h += '<div class="gal" id="g' + i + '">';
-  pics.forEach((src,n) => { h += '<img loading="lazy" class="' + (n===0?"on":"") +
-    '" src="' + esc(src) + '" alt="">'; });
+  h += '<div class="gal" id="g' + i + '" data-pics="' + esc(pics.join("|")) + '">';
+  if (pics.length) h += '<img loading="lazy" class="on" src="' + esc(pics[0]) + '" alt="">';
   if (pics.length > 1) {
     h += '<button class="nav prev" onclick="step(' + i + ',-1)">‹</button>' +
          '<button class="nav next" onclick="step(' + i + ',1)">›</button><div class="dots">';
@@ -527,13 +543,33 @@ function card(r,i){
 
 function step(i,d){
   const g = document.querySelector("#g"+i);
-  const imgs = g.querySelectorAll("img"), dots = g.querySelectorAll(".dot");
-  if (imgs.length < 2) return;
-  let cur = 0;
-  imgs.forEach((im,n) => { if (im.classList.contains("on")) cur = n; });
-  const nx = (cur + d + imgs.length) % imgs.length;
-  imgs[cur].classList.remove("on"); imgs[nx].classList.add("on");
-  if (dots.length) { dots[cur].classList.remove("on"); dots[nx].classList.add("on"); }
+  if (!g) return;
+  const pics = (g.dataset.pics || "").split("|").filter(Boolean);
+  if (pics.length < 2) return;
+
+  const dots = g.querySelectorAll(".dot");
+  const cur = Number(g.dataset.at || 0);
+  const nx = (cur + d + pics.length) % pics.length;
+
+  // Create this photo's element the first time it is asked for, then keep it.
+  let img = g.querySelector('img[data-n="' + nx + '"]');
+  if (!img) {
+    img = document.createElement("img");
+    img.src = pics[nx];
+    img.alt = "";
+    img.dataset.n = String(nx);
+    g.insertBefore(img, g.firstChild);
+  }
+
+  const showing = g.querySelector("img.on");
+  if (showing) showing.classList.remove("on");
+  img.classList.add("on");
+  g.dataset.at = String(nx);
+
+  if (dots.length) {
+    dots.forEach(dot => dot.classList.remove("on"));
+    if (dots[nx]) dots[nx].classList.add("on");
+  }
 }
 
 async function activity(){
