@@ -46,7 +46,11 @@ button,input,select,textarea{font:inherit;color:inherit}
 .note-msg{font-size:13px;margin-top:12px;color:var(--muted)}
 
 header{position:sticky;top:0;z-index:30;background:var(--card);
-  border-bottom:1px solid var(--line);padding:10px 14px}
+  border-bottom:1px solid var(--line);padding:10px 14px;
+  transition:transform .22s ease}
+/* Slides away once you are scrolling down through the list, and comes back the
+   moment you scroll up - the filters earn their space only when you want them. */
+header.hidden{transform:translateY(-100%)}
 .row{display:flex;align-items:center;gap:10px}
 h1.title{font-size:16px;margin:0;letter-spacing:-.01em}
 .count{font-size:12.5px;color:var(--muted)}
@@ -160,6 +164,12 @@ a.view{font-size:12.5px;color:var(--accent);text-decoration:none}
 .pager{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0 8px}
 .pager .actions{max-width:320px;width:100%}
 .pagenum{font-size:12px;color:var(--muted)}
+#map{height:calc(100dvh - 210px);min-height:340px;border-radius:14px;border:1px solid var(--line)}
+.mapnote{text-align:center;color:var(--muted);font-size:12px;padding:8px 0}
+.pin span{display:inline-block;color:#fff;font-size:11px;font-weight:700;padding:3px 6px;
+  border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.4);white-space:nowrap}
+.leaflet-popup-content{font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.leaflet-popup-content img{width:100%;border-radius:8px;margin-bottom:6px}
 </style>
 </head>
 <body>
@@ -275,7 +285,7 @@ const CARD_COLUMNS = [
   "property_key","address","postcode","borough","url","price","effective_price",
   "incentives","beds","baths","property_type","epc","commute_mins","vs_area_pct",
   "score","pros","cons","images","is_new_build","first_seen","price_change",
-  "days_listed","my_verdict","verdicts","liked_count","hidden",
+  "days_listed","my_verdict","verdicts","liked_count","hidden","lat","lng",
 ].join(",");
 
 // 60, not 600. The payload was only half the problem: 600 cards with up to ten
@@ -368,14 +378,18 @@ function renderApp(){
   document.querySelector("#outBtn").onclick = async () => {
     await sb.auth.signOut(); location.reload(); };
 
-  ["Shortlist","All","New builds","Ours","Activity"].forEach(t => {
+  ["Shortlist","All","New builds","Ours","Map","Activity"].forEach(t => {
     const b = document.createElement("button");
     b.className = "tab" + (t === S.tab ? " on" : "");
     b.textContent = t;
     // Changing tab starts at page one; staying on page 4 of a different list
     // would look like an empty app.
-    b.onclick = () => { S.tab = t; S.page = 0; renderTabs();
-                        t === "Activity" ? activity() : load(); };
+    b.onclick = () => {
+      S.tab = t; S.page = 0; renderTabs();
+      if (t === "Activity") return activity();
+      if (t === "Map") return showMap();
+      load();
+    };
     document.querySelector("#tabs").appendChild(b);
   });
 
@@ -537,7 +551,10 @@ function card(r,i){
       esc(r.property_key) + '\',\'liked\')">Like</button>' +
     '<button class="act bin ' + (r.my_verdict==="binned"?"on":"") + '" onclick="setVerdict(\'' +
       esc(r.property_key) + '\',\'binned\')">Bin</button>' +
-    '</div></div></div>';
+    // Four closes: actions, foot, body, card. Missing the last one made every
+    // card nest inside the one above it, so they got narrower down the page
+    // and the grid collapsed to a single column.
+    '</div></div></div></div>';
   return h;
 }
 
@@ -570,6 +587,77 @@ function step(i,d){
     dots.forEach(dot => dot.classList.remove("on"));
     if (dots[nx]) dots[nx].classList.add("on");
   }
+}
+
+// Map view.
+//
+// Leaflet with OpenStreetMap tiles: no API key, no billing account, nothing to
+// leak or restrict. Google's Maps JS API would work too, but it needs a key
+// embedded in this public page, and an unrestricted key is a bill waiting to
+// happen. Nothing here needs Google's data.
+async function showMap(){
+  const out = document.querySelector("#out");
+  out.className = "";
+  out.innerHTML = '<div class="msg">Loading map…</div>';
+
+  if (!window.L) {
+    await new Promise((resolve, reject) => {
+      const css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(css);
+      const js = document.createElement("script");
+      js.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      js.onload = resolve; js.onerror = reject;
+      document.head.appendChild(js);
+    }).catch(() => null);
+  }
+  if (!window.L) { out.innerHTML = '<div class="msg">Could not load the map.</div>'; return; }
+
+  // Map the best-scoring properties that have coordinates, across the whole
+  // list rather than one page - a map of 60 houses is not a map of London.
+  const { data, error } = await sb.from("properties_app")
+    .select("property_key,address,price,effective_price,score,lat,lng,images,beds,baths,url,my_verdict,hidden")
+    .not("lat", "is", null)
+    .order("score", { ascending:false })
+    .limit(600);
+
+  if (error) { out.innerHTML = '<div class="msg">' + esc(error.message) + '</div>'; return; }
+  const points = (data || []).filter(r => !r.hidden && r.my_verdict !== "binned");
+  if (!points.length) { out.innerHTML = '<div class="msg">No mapped properties yet.</div>'; return; }
+
+  out.innerHTML = '<div id="map"></div><div class="mapnote">' + points.length +
+    ' best-scoring properties with a location</div>';
+
+  const map = L.map("map").setView([51.509, -0.11], 10);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap",
+  }).addTo(map);
+
+  const bounds = [];
+  points.forEach(r => {
+    const price = r.effective_price || r.price;
+    const colour = (r.score||0) >= 75 ? "#067647" : (r.score||0) >= 65 ? "#b54708" : "#667085";
+    const marker = L.marker([r.lat, r.lng], {
+      icon: L.divIcon({
+        className: "pin",
+        html: '<span style="background:' + colour + '">' +
+              Math.round(price/1000) + 'k</span>',
+        iconSize: [46, 22],
+      }),
+    }).addTo(map);
+
+    marker.bindPopup(
+      (r.images && r.images[0] ? '<img src="' + esc(r.images[0]) + '" alt="">' : '') +
+      '<b>' + money(price) + '</b> · score ' + (r.score ?? "") + '<br>' +
+      esc(r.address) + '<br>' +
+      (r.beds ? r.beds + " bed " : "") + (r.baths ? r.baths + " bath" : "") + '<br>' +
+      '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">Open listing ↗</a>');
+    bounds.push([r.lat, r.lng]);
+  });
+
+  if (bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
+  setTimeout(() => map.invalidateSize(), 100);
 }
 
 async function activity(){
@@ -608,6 +696,31 @@ window.setVerdict = setVerdict;
 window.addNote = addNote;
 window.step = step;
 window.goPage = goPage;
+
+// Hide the header when scrolling down, reveal it when scrolling up. The small
+// threshold stops it flickering on the tiny scroll jitter a thumb produces.
+(function autoHideHeader(){
+  let lastY = 0, ticking = false;
+  const THRESHOLD = 8;      // ignore movements smaller than this
+  const REVEAL_AT_TOP = 90; // always visible near the top of the list
+
+  function onScroll(){
+    const y = window.scrollY;
+    const header = document.querySelector("header");
+    if (!header) { lastY = y; ticking = false; return; }
+
+    if (Math.abs(y - lastY) > THRESHOLD) {
+      const goingDown = y > lastY;
+      header.classList.toggle("hidden", goingDown && y > REVEAL_AT_TOP);
+      lastY = y;
+    }
+    ticking = false;
+  }
+
+  addEventListener("scroll", () => {
+    if (!ticking) { ticking = true; requestAnimationFrame(onScroll); }
+  }, { passive: true });
+})();
 
 sb.auth.onAuthStateChange((_e, s) => { if (s && !S.me) boot(); });
 boot();
