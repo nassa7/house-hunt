@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1319">
+<!-- Portal image CDNs block hotlinks by referrer. Sending none means the
+     photos load rather than 403ing on someone else's device. -->
+<meta name="referrer" content="no-referrer">
+<title>House Hunt</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#127968;</text></svg>">
+<style>
+:root{
+  --bg:#f4f6f8; --card:#fff; --ink:#0e1116; --muted:#657085; --line:#e3e7ec;
+  --good:#067647; --bad:#b42318; --warn:#b54708; --accent:#1f3864; --chip:#f1f3f6;
+  --shadow:0 1px 2px rgba(16,24,40,.06),0 6px 16px rgba(16,24,40,.06);
+}
+:root[data-theme="dark"]{
+  --bg:#0f1319; --card:#171d26; --ink:#e9edf3; --muted:#93a0b1; --line:#252d38;
+  --good:#56d38a; --bad:#f97066; --warn:#f5a35c; --accent:#8fb0ff; --chip:#1d2530;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.3);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1319; --card:#171d26; --ink:#e9edf3; --muted:#93a0b1; --line:#252d38;
+    --good:#56d38a; --bad:#f97066; --warn:#f5a35c; --accent:#8fb0ff; --chip:#1d2530;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px rgba(0,0,0,.3);
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
+button,input,select,textarea{font:inherit;color:inherit}
+
+.login{min-height:100dvh;display:grid;place-items:center;padding:24px}
+.login-card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:28px;max-width:380px;width:100%;box-shadow:var(--shadow)}
+.login h1{font-size:20px;margin:0 0 6px}
+.login p{color:var(--muted);font-size:14px;margin:0 0 18px}
+.login input{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);
+  background:var(--bg);margin-bottom:10px}
+.btn{width:100%;padding:12px;border-radius:10px;border:0;background:var(--accent);
+  color:#fff;font-weight:600;cursor:pointer}
+:root[data-theme="dark"] .btn{color:#0f1319}
+.note-msg{font-size:13px;margin-top:12px;color:var(--muted)}
+
+header{position:sticky;top:0;z-index:30;background:var(--card);
+  border-bottom:1px solid var(--line);padding:10px 14px}
+.row{display:flex;align-items:center;gap:10px}
+h1.title{font-size:16px;margin:0;letter-spacing:-.01em}
+.count{font-size:12.5px;color:var(--muted)}
+.spacer{flex:1}
+.icon{background:transparent;border:1px solid var(--line);border-radius:9px;
+  width:34px;height:34px;display:grid;place-items:center;cursor:pointer}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin-top:9px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{border:1px solid var(--line);background:transparent;color:var(--muted);
+  padding:6px 13px;border-radius:999px;font-size:13px;white-space:nowrap;cursor:pointer}
+.tab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] .tab.on{color:#0f1319}
+.filters{display:flex;gap:8px;margin-top:9px}
+.filters input,.filters select{padding:8px 10px;border-radius:9px;border:1px solid var(--line);
+  background:var(--card);font-size:13px;min-width:0}
+.filters input{flex:1}
+
+main{padding:14px;max-width:1500px;margin:0 auto}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+.area{grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--muted);margin:10px 2px 0;display:flex;gap:10px;align-items:center}
+.area::after{content:"";flex:1;height:1px;background:var(--line)}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+  overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
+.card.dim{opacity:.45}
+.gal{position:relative;aspect-ratio:4/3;background:var(--chip)}
+.gal img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;
+  transition:opacity .18s}
+.gal img.on{opacity:1}
+.nav{position:absolute;top:50%;transform:translateY(-50%);width:32px;height:32px;
+  border:0;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;cursor:pointer;
+  display:grid;place-items:center;opacity:0;transition:opacity .15s}
+.gal:hover .nav{opacity:1}
+.prev{left:8px}.next{right:8px}
+.dots{position:absolute;bottom:8px;left:0;right:0;display:flex;justify-content:center;
+  gap:4px;pointer-events:none}
+.dot{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.5)}
+.dot.on{background:#fff;width:13px;border-radius:3px}
+.pill{position:absolute;top:9px;left:9px;font-size:10.5px;font-weight:700;padding:3px 7px;
+  border-radius:6px;background:rgba(0,0,0,.62);color:#fff;letter-spacing:.03em}
+.pill.drop{left:auto;right:9px;background:var(--bad)}
+
+.body{padding:12px 14px 14px;display:flex;flex-direction:column;flex:1}
+.top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.price{font-size:19px;font-weight:700;letter-spacing:-.02em}
+.was{font-size:12px;color:var(--muted);text-decoration:line-through;margin-left:6px}
+.score{font-size:12px;font-weight:700;padding:4px 8px;border-radius:7px;color:#fff}
+.s-hi{background:var(--good)}.s-mid{background:var(--warn)}.s-lo{background:var(--muted)}
+.addr{color:var(--muted);font-size:13px;margin:4px 0 9px}
+.facts{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}
+.fact{font-size:11.5px;background:var(--chip);border-radius:6px;padding:3px 8px;color:var(--muted)}
+.fact.under{color:var(--good);font-weight:600}
+.fact.over{color:var(--warn)}
+.fact.inc{border:1px solid var(--good);background:transparent;color:var(--good);font-weight:700}
+ul{margin:0 0 8px;padding-left:15px;font-size:12.5px}
+li.pro{color:var(--good)}li.con{color:var(--bad)}
+summary{font-size:12px;color:var(--muted);cursor:pointer;margin-bottom:6px}
+
+.who{display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 8px}
+.chip{font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);
+  display:flex;gap:5px;align-items:center}
+.chip b{font-weight:600}
+.avatar{width:12px;height:12px;border-radius:50%;display:inline-block}
+
+.foot{margin-top:auto;padding-top:9px}
+a.view{font-size:12.5px;color:var(--accent);text-decoration:none}
+.notes{margin-top:9px;display:flex;flex-direction:column;gap:6px}
+.note{background:var(--chip);border-radius:9px;padding:7px 9px;font-size:12.5px}
+.note .meta{color:var(--muted);font-size:11px;margin-bottom:2px}
+.note-input{display:flex;gap:6px;margin-top:6px}
+.note-input input{flex:1;padding:8px 10px;border-radius:9px;border:1px solid var(--line);
+  background:var(--bg);font-size:12.5px}
+.actions{display:flex;gap:8px;margin-top:10px}
+.act{flex:1;padding:9px;border-radius:9px;border:1px solid var(--line);background:transparent;
+  font-size:13.5px;font-weight:600;cursor:pointer}
+.act.like.on{border-color:var(--good);color:var(--good)}
+.act.bin.on{border-color:var(--bad);color:var(--bad)}
+.msg{grid-column:1/-1;text-align:center;color:var(--muted);padding:50px 20px}
+.skel{height:250px;border-radius:14px;background:var(--card);border:1px solid var(--line);
+  animation:p 1.3s ease-in-out infinite}
+@keyframes p{0%,100%{opacity:1}50%{opacity:.5}}
+.feed{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+.event{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:10px 13px;
+  font-size:13.5px;display:flex;gap:9px;align-items:baseline}
+.event .when{color:var(--muted);font-size:11.5px;margin-left:auto;white-space:nowrap}
+</style>
+</head>
+<body>
+<div id="root"><div class="login"><div class="login-card"><p>Loading…</p></div></div></div>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const sb = createClient("https://pfbtlbucrpcdoatzlwpj.supabase.co", "sb_publishable_fb1XoZxkZHLTENsSca4D3A_e2zHjCEK");
+const root = document.getElementById("root");
+
+const S = { tab:"Shortlist", rows:[], view:[], me:null, profiles:{}, notes:{},
+            area:"", sort:"score", q:"" };
+
+function initTheme(){
+  const saved = localStorage.getItem("theme");
+  if (saved) document.documentElement.dataset.theme = saved;
+}
+function themeNow(){
+  return document.documentElement.dataset.theme
+    || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+}
+function toggleTheme(){
+  const next = themeNow() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("theme", next);
+  const b = document.querySelector("#themeBtn");
+  if (b) b.textContent = next === "dark" ? "☀" : "☾";
+}
+initTheme();
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const money = n => n == null ? "" : "£" + Number(n).toLocaleString("en-GB");
+const ago = ts => {
+  const s = (Date.now() - new Date(ts)) / 1000;
+  if (s < 90) return "just now";
+  if (s < 5400) return Math.round(s/60) + "m ago";
+  if (s < 129600) return Math.round(s/3600) + "h ago";
+  return Math.round(s/86400) + "d ago";
+};
+
+async function boot(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if (!session) return renderLogin();
+  S.me = session.user;
+  await ensureProfile();
+  renderApp();
+  await load();
+  subscribe();
+}
+
+function renderLogin(msg){
+  root.innerHTML = '<div class="login"><div class="login-card">' +
+    '<h1>House Hunt</h1>' +
+    '<p>Enter your email and we will send you a sign-in link. No password needed.</p>' +
+    '<input id="email" type="email" placeholder="you@example.com" autocomplete="email">' +
+    '<button class="btn" id="send">Send me a link</button>' +
+    '<div class="note-msg" id="msg">' + esc(msg || "") + '</div></div></div>';
+  document.querySelector("#send").onclick = async () => {
+    const email = document.querySelector("#email").value.trim();
+    if (!email) return;
+    document.querySelector("#msg").textContent = "Sending…";
+    const { error } = await sb.auth.signInWithOtp({
+      email, options:{ emailRedirectTo: location.href.split("#")[0] } });
+    document.querySelector("#msg").textContent = error
+      ? error.message
+      : "Check your email - the link signs you straight in. It can land in spam.";
+  };
+}
+
+async function ensureProfile(){
+  const { data } = await sb.from("profiles").select("*").eq("user_id", S.me.id).maybeSingle();
+  if (!data) {
+    const raw = (S.me.email || "").split("@")[0].split(".")[0];
+    await sb.from("profiles").insert({
+      user_id: S.me.id,
+      display_name: raw.charAt(0).toUpperCase() + raw.slice(1),
+      colour: "#" + Math.floor(Math.random()*0xffffff).toString(16).padStart(6,"0") });
+  }
+  const { data:all } = await sb.from("profiles").select("*");
+  (all || []).forEach(p => S.profiles[p.user_id] = p);
+}
+
+async function load(){
+  let q = sb.from("properties_app").select("*");
+  if (S.tab === "Shortlist") q = q.gte("score", 70).gte("score_coverage", 0.5);
+  if (S.tab === "New builds") q = q.eq("is_new_build", true);
+  if (S.tab === "Ours")       q = q.gt("liked_count", 0);
+
+  const { data, error } = await q.order("score", { ascending:false }).limit(1500);
+  const out = document.querySelector("#out");
+  if (error) { if (out) out.innerHTML = '<div class="msg">' + esc(error.message) + '</div>'; return; }
+
+  S.rows = (data || []).filter(r =>
+    S.tab === "Ours" ? true : !r.hidden && r.my_verdict !== "binned");
+
+  await loadNotes();
+  fillAreas();
+  render();
+}
+
+async function loadNotes(){
+  const keys = S.rows.slice(0, 400).map(r => r.property_key);
+  S.notes = {};
+  if (!keys.length) return;
+  const { data } = await sb.from("notes").select("*").in("property_key", keys)
+                           .order("created_at");
+  (data || []).forEach(n => { (S.notes[n.property_key] = S.notes[n.property_key] || []).push(n); });
+}
+
+function subscribe(){
+  sb.channel("live")
+    .on("postgres_changes", { event:"*", schema:"public", table:"verdicts" }, load)
+    .on("postgres_changes", { event:"*", schema:"public", table:"notes" },
+        async () => { await loadNotes(); render(); })
+    .subscribe();
+}
+
+async function setVerdict(key, verdict){
+  const row = S.rows.find(r => r.property_key === key);
+  if (row && row.my_verdict === verdict) {
+    await sb.from("verdicts").delete().eq("property_key", key).eq("user_id", S.me.id);
+  } else {
+    await sb.from("verdicts").upsert(
+      { property_key:key, user_id:S.me.id, verdict, updated_at:new Date().toISOString() },
+      { onConflict:"property_key,user_id" });
+  }
+  await load();
+}
+
+async function addNote(key, input){
+  const body = input.value.trim();
+  if (!body) return;
+  input.value = "";
+  await sb.from("notes").insert({ property_key:key, user_id:S.me.id, body });
+  await loadNotes(); render();
+}
+
+function renderApp(){
+  root.innerHTML =
+    '<header><div class="row"><h1 class="title">House Hunt</h1>' +
+    '<span class="count" id="count"></span><span class="spacer"></span>' +
+    '<button class="icon" id="themeBtn" title="Theme">☾</button>' +
+    '<button class="icon" id="outBtn" title="Sign out">⎋</button></div>' +
+    '<div class="tabs" id="tabs"></div>' +
+    '<div class="filters"><input id="q" type="search" placeholder="Search street or postcode">' +
+    '<select id="area"></select>' +
+    '<select id="sort">' +
+      '<option value="score">Best score</option>' +
+      '<option value="price">Cheapest</option>' +
+      '<option value="commute">Commute</option>' +
+      '<option value="value">Best value</option>' +
+      '<option value="new">Newest</option></select></div></header>' +
+    '<main><div class="grid" id="out"><div class="skel"></div><div class="skel"></div>' +
+    '<div class="skel"></div></div></main>';
+
+  document.querySelector("#themeBtn").textContent = themeNow() === "dark" ? "☀" : "☾";
+  document.querySelector("#themeBtn").onclick = toggleTheme;
+  document.querySelector("#outBtn").onclick = async () => {
+    await sb.auth.signOut(); location.reload(); };
+
+  ["Shortlist","All","New builds","Ours","Activity"].forEach(t => {
+    const b = document.createElement("button");
+    b.className = "tab" + (t === S.tab ? " on" : "");
+    b.textContent = t;
+    b.onclick = () => { S.tab = t; renderTabs(); t === "Activity" ? activity() : load(); };
+    document.querySelector("#tabs").appendChild(b);
+  });
+
+  let timer;
+  document.querySelector("#q").oninput = e => {
+    clearTimeout(timer); S.q = e.target.value.toLowerCase();
+    timer = setTimeout(render, 180); };
+  document.querySelector("#area").onchange = e => { S.area = e.target.value; render(); };
+  document.querySelector("#sort").onchange = e => { S.sort = e.target.value; render(); };
+}
+
+function renderTabs(){
+  [...document.querySelectorAll(".tab")].forEach(b =>
+    b.classList.toggle("on", b.textContent === S.tab));
+}
+
+function fillAreas(){
+  const counts = {};
+  S.rows.forEach(r => { if (r.borough) counts[r.borough] = (counts[r.borough]||0)+1; });
+  const sel = document.querySelector("#area");
+  if (!sel) return;
+  sel.innerHTML = '<option value="">All areas</option>' +
+    Object.keys(counts).sort().map(a =>
+      '<option ' + (a===S.area ? "selected" : "") + '>' + esc(a) + ' (' + counts[a] + ')</option>').join("");
+}
+
+function render(){
+  const out = document.querySelector("#out");
+  if (!out) return;
+  out.className = "grid";
+
+  let items = S.rows.filter(r => {
+    if (S.area && (r.borough || "") !== S.area.replace(/ \(\d+\)$/, "")) return false;
+    if (S.q) {
+      const hay = ((r.address||"") + " " + (r.postcode||"") + " " + (r.property_type||"")).toLowerCase();
+      if (hay.indexOf(S.q) === -1) return false;
+    }
+    return true;
+  });
+
+  const by = {
+    score:   (a,b) => (b.score||0) - (a.score||0),
+    price:   (a,b) => (a.effective_price||9e9) - (b.effective_price||9e9),
+    commute: (a,b) => (a.commute_mins||999) - (b.commute_mins||999),
+    value:   (a,b) => ((a.vs_area_pct==null?99:a.vs_area_pct) - (b.vs_area_pct==null?99:b.vs_area_pct)),
+    new:     (a,b) => String(b.first_seen||"").localeCompare(String(a.first_seen||"")),
+  }[S.sort];
+  items.sort(by);
+  S.view = items;
+
+  document.querySelector("#count").textContent =
+    items.length + (items.length === 1 ? " property" : " properties");
+
+  if (!items.length) { out.innerHTML = '<div class="msg">Nothing here yet.</div>'; return; }
+
+  const group = !S.area && S.sort === "score";
+  let html = "", last = null;
+  items.forEach((r,i) => {
+    const area = r.borough || "Other";
+    if (group && area !== last) { html += '<div class="area">' + esc(area) + '</div>'; last = area; }
+    html += card(r,i);
+  });
+  out.innerHTML = html;
+}
+
+function card(r,i){
+  const eff = r.effective_price, ask = r.price;
+  const showEff = eff != null && ask != null && eff < ask;
+  const cls = (r.score||0) >= 75 ? "s-hi" : (r.score||0) >= 65 ? "s-mid" : "s-lo";
+  const pics = (r.images || []).slice(0,10);
+
+  let h = '<div class="card' + (r.my_verdict==="binned" ? " dim" : "") + '" id="c' + i + '">';
+  h += '<div class="gal" id="g' + i + '">';
+  pics.forEach((src,n) => { h += '<img loading="lazy" class="' + (n===0?"on":"") +
+    '" src="' + esc(src) + '" alt="">'; });
+  if (pics.length > 1) {
+    h += '<button class="nav prev" onclick="step(' + i + ',-1)">‹</button>' +
+         '<button class="nav next" onclick="step(' + i + ',1)">›</button><div class="dots">';
+    pics.forEach((_,n) => { h += '<span class="dot ' + (n===0?"on":"") + '"></span>'; });
+    h += '</div>';
+  }
+  const inc = (r.incentives||[]).map(x => x.label).join("; ");
+  if (inc.toLowerCase().indexOf("deposit") !== -1) h += '<span class="pill">DEPOSIT OFFER</span>';
+  else if (r.first_seen === new Date().toISOString().slice(0,10)) h += '<span class="pill">NEW TODAY</span>';
+  if (r.price_change < 0) h += '<span class="pill drop">↓ ' + money(Math.abs(r.price_change)) + '</span>';
+  h += '</div><div class="body">';
+
+  h += '<div class="top"><div><span class="price">' + money(showEff?eff:ask) + '</span>' +
+       (showEff ? '<span class="was">' + money(ask) + '</span>' : '') +
+       '</div><span class="score ' + cls + '">' + (r.score == null ? "" : r.score) + '</span></div>';
+  h += '<div class="addr">' + esc(r.address) + '</div>';
+
+  h += '<div class="facts">';
+  if (r.beds) h += '<span class="fact">' + r.beds + ' bed</span>';
+  if (r.baths) h += '<span class="fact">' + r.baths + ' bath</span>';
+  if (r.property_type) h += '<span class="fact">' + esc(r.property_type) + '</span>';
+  if (r.commute_mins) h += '<span class="fact">' + r.commute_mins + ' min to Bank</span>';
+  if (r.vs_area_pct != null) h += '<span class="fact ' + (r.vs_area_pct<0?"under":"over") + '">' +
+    Math.abs(r.vs_area_pct).toFixed(1) + '% ' + (r.vs_area_pct<0?"under":"over") + ' area</span>';
+  if (r.epc) h += '<span class="fact">EPC ' + esc(r.epc) + '</span>';
+  if (inc) h += '<span class="fact inc">' + esc(inc) + '</span>';
+  h += '</div>';
+
+  const who = (r.verdicts||[]).filter(v => v.verdict !== "viewed");
+  if (who.length) {
+    h += '<div class="who">' + who.map(v =>
+      '<span class="chip"><span class="avatar" style="background:' + esc(v.colour) + '"></span>' +
+      '<b>' + esc(v.name) + '</b> ' + (v.verdict === "liked" ? "liked" : "binned") +
+      ' · ' + ago(v.at) + '</span>').join("") + '</div>';
+  }
+
+  const pros = (r.pros||[]).slice(0,5), cons = (r.cons||[]).slice(0,6);
+  if (pros.length) h += '<ul>' + pros.map(p => '<li class="pro">' + esc(p) + '</li>').join("") + '</ul>';
+  if (cons.length) h += '<details><summary>' + cons.length + ' things to check</summary><ul>' +
+    cons.map(c => '<li class="con">' + esc(c) + '</li>').join("") + '</ul></details>';
+
+  h += '<div class="foot">';
+  if (r.days_listed) h += '<span class="fact">' + r.days_listed + ' days listed</span> ';
+  if (r.url) h += '<a class="view" href="' + esc(r.url) + '" target="_blank" rel="noopener">Open listing ↗</a>';
+
+  const notes = S.notes[r.property_key] || [];
+  h += '<div class="notes">' + notes.map(n =>
+    '<div class="note"><div class="meta">' +
+    esc((S.profiles[n.user_id]||{}).display_name || "Someone") + ' · ' + ago(n.created_at) +
+    '</div>' + esc(n.body) + '</div>').join("") + '</div>';
+  h += '<div class="note-input"><input placeholder="Add a note…" ' +
+       'onkeydown="if(event.key===\'Enter\')addNote(\'' + esc(r.property_key) + '\',this)"></div>';
+
+  h += '<div class="actions">' +
+    '<button class="act like ' + (r.my_verdict==="liked"?"on":"") + '" onclick="setVerdict(\'' +
+      esc(r.property_key) + '\',\'liked\')">Like</button>' +
+    '<button class="act bin ' + (r.my_verdict==="binned"?"on":"") + '" onclick="setVerdict(\'' +
+      esc(r.property_key) + '\',\'binned\')">Bin</button>' +
+    '</div></div></div>';
+  return h;
+}
+
+function step(i,d){
+  const g = document.querySelector("#g"+i);
+  const imgs = g.querySelectorAll("img"), dots = g.querySelectorAll(".dot");
+  if (imgs.length < 2) return;
+  let cur = 0;
+  imgs.forEach((im,n) => { if (im.classList.contains("on")) cur = n; });
+  const nx = (cur + d + imgs.length) % imgs.length;
+  imgs[cur].classList.remove("on"); imgs[nx].classList.add("on");
+  if (dots.length) { dots[cur].classList.remove("on"); dots[nx].classList.add("on"); }
+}
+
+async function activity(){
+  const out = document.querySelector("#out");
+  out.className = "";
+  out.innerHTML = '<div class="feed"><div class="msg">Loading…</div></div>';
+
+  const res = await Promise.all([
+    sb.from("verdicts").select("*").order("updated_at",{ascending:false}).limit(40),
+    sb.from("notes").select("*").order("created_at",{ascending:false}).limit(20),
+    sb.from("runs").select("*").order("started_at",{ascending:false}).limit(5),
+  ]);
+  const v = res[0].data || [], n = res[1].data || [], runs = res[2].data || [];
+
+  const keys = [...new Set([...v.map(x=>x.property_key), ...n.map(x=>x.property_key)])].slice(0,100);
+  const { data:props } = await sb.from("properties").select("property_key,address").in("property_key", keys);
+  const addr = {}; (props||[]).forEach(p => addr[p.property_key] = p.address);
+  const name = id => (S.profiles[id]||{}).display_name || "Someone";
+
+  const events = [
+    ...v.map(x => ({ t:x.updated_at, text:'<b>' + esc(name(x.user_id)) + '</b> ' + x.verdict +
+      ' ' + esc(addr[x.property_key] || "a property") })),
+    ...n.map(x => ({ t:x.created_at, text:'<b>' + esc(name(x.user_id)) + '</b> noted on ' +
+      esc(addr[x.property_key] || "a property") + ': "' + esc(x.body.slice(0,60)) + '"' })),
+    ...runs.map(x => ({ t:x.started_at, text:'Search ran - ' +
+      ((x.counts||{}).new || 0) + ' new, ' + ((x.counts||{}).accepted || 0) + ' matches' })),
+  ].sort((a,b) => new Date(b.t) - new Date(a.t)).slice(0,50);
+
+  out.innerHTML = '<div class="feed">' + (events.length
+    ? events.map(e => '<div class="event"><span>' + e.text + '</span><span class="when">' +
+        ago(e.t) + '</span></div>').join("")
+    : '<div class="msg">Nothing has happened yet.</div>') + '</div>';
+}
+
+window.setVerdict = setVerdict;
+window.addNote = addNote;
+window.step = step;
+
+sb.auth.onAuthStateChange((_e, s) => { if (s && !S.me) boot(); });
+boot();
+</script>
+</body>
+</html>
