@@ -133,6 +133,9 @@ a.view{font-size:12.5px;color:var(--accent);text-decoration:none}
 .event{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:10px 13px;
   font-size:13.5px;display:flex;gap:9px;align-items:baseline}
 .event .when{color:var(--muted);font-size:11.5px;margin-left:auto;white-space:nowrap}
+.pager{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;gap:6px;padding:18px 0 8px}
+.pager .actions{max-width:320px;width:100%}
+.pagenum{font-size:12px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -145,7 +148,7 @@ const sb = createClient("https://pfbtlbucrpcdoatzlwpj.supabase.co", "sb_publisha
 const root = document.getElementById("root");
 
 const S = { tab:"Shortlist", rows:[], view:[], me:null, profiles:{}, notes:{},
-            area:"", sort:"score", q:"" };
+            area:"", sort:"score", q:"", page:0, hasNext:false };
 
 function initTheme(){
   const saved = localStorage.getItem("theme");
@@ -241,17 +244,36 @@ async function ensureProfile(){
   (all || []).forEach(p => S.profiles[p.user_id] = p);
 }
 
+// Only what a card actually draws. Selecting * pulled the enrichment jsonb and
+// the full agent description too - about 2KB a row, so the All tab was asking
+// for several megabytes and hanging the phone.
+const CARD_COLUMNS = [
+  "property_key","address","postcode","borough","url","price","effective_price",
+  "incentives","beds","baths","property_type","epc","commute_mins","vs_area_pct",
+  "score","pros","cons","images","is_new_build","first_seen","price_change",
+  "days_listed","my_verdict","verdicts","liked_count","hidden",
+].join(",");
+
+const PAGE = 600;
+
 async function load(){
-  let q = sb.from("properties_app").select("*");
+  let q = sb.from("properties_app").select(CARD_COLUMNS);
   if (S.tab === "Shortlist") q = q.gte("score", 70).gte("score_coverage", 0.5);
   if (S.tab === "New builds") q = q.eq("is_new_build", true);
   if (S.tab === "Ours")       q = q.gt("liked_count", 0);
 
-  const { data, error } = await q.order("score", { ascending:false }).limit(1500);
+  // Ask for one more than a page: if it comes back there is a next page, which
+  // is cheaper than count(*) over a view doing per-row subqueries.
+  const start = S.page * PAGE;
+  const { data, error } = await q.order("score", { ascending:false })
+                                 .range(start, start + PAGE);
+
   const out = document.querySelector("#out");
   if (error) { if (out) out.innerHTML = '<div class="msg">' + esc(error.message) + '</div>'; return; }
 
-  S.rows = (data || []).filter(r =>
+  const rows = data || [];
+  S.hasNext = rows.length > PAGE;
+  S.rows = rows.slice(0, PAGE).filter(r =>
     S.tab === "Ours" ? true : !r.hidden && r.my_verdict !== "binned");
 
   await loadNotes();
@@ -323,7 +345,10 @@ function renderApp(){
     const b = document.createElement("button");
     b.className = "tab" + (t === S.tab ? " on" : "");
     b.textContent = t;
-    b.onclick = () => { S.tab = t; renderTabs(); t === "Activity" ? activity() : load(); };
+    // Changing tab starts at page one; staying on page 4 of a different list
+    // would look like an empty app.
+    b.onclick = () => { S.tab = t; S.page = 0; renderTabs();
+                        t === "Activity" ? activity() : load(); };
     document.querySelector("#tabs").appendChild(b);
   });
 
@@ -374,10 +399,17 @@ function render(){
   items.sort(by);
   S.view = items;
 
+  const from = S.page * PAGE + 1;
   document.querySelector("#count").textContent =
-    items.length + (items.length === 1 ? " property" : " properties");
+    S.page === 0 && !S.hasNext
+      ? items.length + (items.length === 1 ? " property" : " properties")
+      : from + "-" + (from + items.length - 1) + " of many";
 
-  if (!items.length) { out.innerHTML = '<div class="msg">Nothing here yet.</div>'; return; }
+  if (!items.length) {
+    out.innerHTML = '<div class="msg">Nothing here' +
+      (S.page ? ' on this page.' : ' yet.') + '</div>' + pager();
+    return;
+  }
 
   const group = !S.area && S.sort === "score";
   let html = "", last = null;
@@ -386,7 +418,26 @@ function render(){
     if (group && area !== last) { html += '<div class="area">' + esc(area) + '</div>'; last = area; }
     html += card(r,i);
   });
-  out.innerHTML = html;
+  out.innerHTML = html + pager();
+}
+
+// Paging happens in the database, not the browser: 3,946 properties is several
+// megabytes of JSON, which is what hung the All tab. Sorting and filtering are
+// applied to the page you are on.
+function pager(){
+  if (!S.hasNext && S.page === 0) return "";
+  const prev = S.page > 0
+    ? '<button class="act" onclick="goPage(-1)">‹ Previous</button>' : '';
+  const next = S.hasNext
+    ? '<button class="act" onclick="goPage(1)">Next ›</button>' : '';
+  return '<div class="pager"><div class="actions">' + prev + next +
+         '</div><div class="pagenum">Page ' + (S.page + 1) + '</div></div>';
+}
+
+function goPage(direction){
+  S.page = Math.max(0, S.page + direction);
+  window.scrollTo({ top: 0 });
+  load();
 }
 
 function card(r,i){
@@ -507,6 +558,7 @@ async function activity(){
 window.setVerdict = setVerdict;
 window.addNote = addNote;
 window.step = step;
+window.goPage = goPage;
 
 sb.auth.onAuthStateChange((_e, s) => { if (s && !S.me) boot(); });
 boot();
