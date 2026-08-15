@@ -59,10 +59,23 @@ h1.title{font-size:16px;margin:0;letter-spacing:-.01em}
   padding:6px 13px;border-radius:999px;font-size:13px;white-space:nowrap;cursor:pointer}
 .tab.on{background:var(--accent);border-color:var(--accent);color:#fff}
 :root[data-theme="dark"] .tab.on{color:#0f1319}
-.filters{display:flex;gap:8px;margin-top:9px}
-.filters input,.filters select{padding:8px 10px;border-radius:9px;border:1px solid var(--line);
-  background:var(--card);font-size:13px;min-width:0}
-.filters input{flex:1}
+/* Three controls in one row squeeze the search box to nothing on a phone, so
+   it gets a row of its own and the two dropdowns share the next one. */
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
+.filters input,.filters select{padding:10px 11px;border-radius:9px;border:1px solid var(--line);
+  background:var(--card);font-size:13px;min-width:0;width:100%}
+.filters input[type=search]{grid-column:1/-1}
+.filters select{appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),
+                   linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:30px}
+.filters input::placeholder{color:var(--muted)}
+@media (min-width:620px){
+  .filters{display:flex}
+  .filters input[type=search]{flex:1}
+  .filters select{width:auto;max-width:230px}
+}
 
 main{padding:14px;max-width:1500px;margin:0 auto}
 .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
