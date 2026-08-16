@@ -444,10 +444,11 @@ async function fillAreas(){
   if (!sel) return;
 
   if (!S.areas) {
-    const { data } = await sb.from("properties").select("borough").limit(5000);
+    // Counted in the database. Selecting every row and counting here only saw
+    // the first 1,000 PostgREST returns, which is why the list was short.
+    const { data } = await sb.from("borough_counts").select("*");
     const counts = {};
-    (data || []).forEach(r => {
-      if (r.borough) counts[r.borough] = (counts[r.borough] || 0) + 1; });
+    (data || []).forEach(r => { counts[r.borough] = r.properties; });
     S.areas = counts;
   }
 
