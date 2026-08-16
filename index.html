@@ -298,20 +298,46 @@ async function load(){
   if (S.tab === "Shortlist") q = q.gte("score", 70).gte("score_coverage", 0.5);
   if (S.tab === "New builds") q = q.eq("is_new_build", true);
   if (S.tab === "Ours")       q = q.gt("liked_count", 0);
+  if (S.tab === "Binned")     q = q.eq("my_verdict", "binned");
+
+  // Filtering and sorting happen in Postgres, across all 3,946 properties.
+  // Doing it in the browser only ever filtered the page you happened to be on,
+  // so picking a borough looked like that borough had four houses in it.
+  if (S.area) q = q.eq("borough", S.area);
+  if (S.q) {
+    const like = "%" + S.q.replace(/[%,()]/g, " ") + "%";
+    q = q.or("address.ilike." + like + ",postcode.ilike." + like +
+             ",property_type.ilike." + like);
+  }
 
   // Ask for one more than a page: if it comes back there is a next page, which
   // is cheaper than count(*) over a view doing per-row subqueries.
+  // Sort in the database too, so "cheapest" means cheapest overall rather than
+  // cheapest among the 60 already on screen.
+  const sorts = {
+    score:   ["score", false],
+    price:   ["effective_price", true],
+    commute: ["commute_mins", true],
+    value:   ["vs_area_pct", true],
+    new:     ["first_seen", false],
+  };
+  const [column, ascending] = sorts[S.sort] || sorts.score;
+
   const start = S.page * PAGE;
-  const { data, error } = await q.order("score", { ascending:false })
-                                 .range(start, start + PAGE);
+  const { data, error } = await q
+    .order(column, { ascending, nullsFirst: false })
+    .range(start, start + PAGE);
 
   const out = document.querySelector("#out");
   if (error) { if (out) out.innerHTML = '<div class="msg">' + esc(error.message) + '</div>'; return; }
 
   const rows = data || [];
   S.hasNext = rows.length > PAGE;
-  S.rows = rows.slice(0, PAGE).filter(r =>
-    S.tab === "Ours" ? true : !r.hidden && r.my_verdict !== "binned");
+  S.rows = rows.slice(0, PAGE).filter(r => {
+    if (S.tab === "Binned") return true;          // that tab is the bin itself
+    if (S.tab === "Ours") return true;            // show both opinions
+    return !r.hidden && r.my_verdict !== "binned";
+  });
 
   await loadNotes();
   fillAreas();
@@ -378,7 +404,7 @@ function renderApp(){
   document.querySelector("#outBtn").onclick = async () => {
     await sb.auth.signOut(); location.reload(); };
 
-  ["Shortlist","All","New builds","Ours","Map","Activity"].forEach(t => {
+  ["Shortlist","All","New builds","Ours","Map","Binned","Activity"].forEach(t => {
     const b = document.createElement("button");
     b.className = "tab" + (t === S.tab ? " on" : "");
     b.textContent = t;
@@ -393,12 +419,17 @@ function renderApp(){
     document.querySelector("#tabs").appendChild(b);
   });
 
+  // Every filter now re-queries the database and starts again at page one.
   let timer;
   document.querySelector("#q").oninput = e => {
-    clearTimeout(timer); S.q = e.target.value.toLowerCase();
-    timer = setTimeout(render, 180); };
-  document.querySelector("#area").onchange = e => { S.area = e.target.value; render(); };
-  document.querySelector("#sort").onchange = e => { S.sort = e.target.value; render(); };
+    clearTimeout(timer);
+    S.q = e.target.value.trim();
+    timer = setTimeout(() => { S.page = 0; load(); }, 300);
+  };
+  document.querySelector("#area").onchange = e => {
+    S.area = e.target.value; S.page = 0; load(); };
+  document.querySelector("#sort").onchange = e => {
+    S.sort = e.target.value; S.page = 0; load(); };
 }
 
 function renderTabs(){
@@ -406,14 +437,24 @@ function renderTabs(){
     b.classList.toggle("on", b.textContent === S.tab));
 }
 
-function fillAreas(){
-  const counts = {};
-  S.rows.forEach(r => { if (r.borough) counts[r.borough] = (counts[r.borough]||0)+1; });
+// The borough list is every borough in the database, fetched once - not the
+// boroughs that happen to appear on the current page.
+async function fillAreas(){
   const sel = document.querySelector("#area");
   if (!sel) return;
+
+  if (!S.areas) {
+    const { data } = await sb.from("properties").select("borough").limit(5000);
+    const counts = {};
+    (data || []).forEach(r => {
+      if (r.borough) counts[r.borough] = (counts[r.borough] || 0) + 1; });
+    S.areas = counts;
+  }
+
   sel.innerHTML = '<option value="">All areas</option>' +
-    Object.keys(counts).sort().map(a =>
-      '<option ' + (a===S.area ? "selected" : "") + '>' + esc(a) + ' (' + counts[a] + ')</option>').join("");
+    Object.keys(S.areas).sort().map(a =>
+      '<option value="' + esc(a) + '" ' + (a === S.area ? "selected" : "") + '>' +
+      esc(a) + ' (' + S.areas[a] + ')</option>').join("");
 }
 
 function render(){
@@ -421,23 +462,9 @@ function render(){
   if (!out) return;
   out.className = "grid";
 
-  let items = S.rows.filter(r => {
-    if (S.area && (r.borough || "") !== S.area.replace(/ \(\d+\)$/, "")) return false;
-    if (S.q) {
-      const hay = ((r.address||"") + " " + (r.postcode||"") + " " + (r.property_type||"")).toLowerCase();
-      if (hay.indexOf(S.q) === -1) return false;
-    }
-    return true;
-  });
-
-  const by = {
-    score:   (a,b) => (b.score||0) - (a.score||0),
-    price:   (a,b) => (a.effective_price||9e9) - (b.effective_price||9e9),
-    commute: (a,b) => (a.commute_mins||999) - (b.commute_mins||999),
-    value:   (a,b) => ((a.vs_area_pct==null?99:a.vs_area_pct) - (b.vs_area_pct==null?99:b.vs_area_pct)),
-    new:     (a,b) => String(b.first_seen||"").localeCompare(String(a.first_seen||"")),
-  }[S.sort];
-  items.sort(by);
+  // Already filtered and sorted by Postgres - re-doing it here would only
+  // reorder the current page and give a false impression of the whole set.
+  const items = S.rows;
   S.view = items;
 
   const from = S.page * PAGE + 1;
