@@ -443,19 +443,34 @@ async function fillAreas(){
   const sel = document.querySelector("#area");
   if (!sel) return;
 
-  if (!S.areas) {
-    // Counted in the database. Selecting every row and counting here only saw
-    // the first 1,000 PostgREST returns, which is why the list was short.
+  // Counted in the database, per tab. Counting in the browser only ever saw
+  // the 1,000 rows PostgREST returns, and it described the whole database
+  // rather than the list you are looking at.
+  if (!S.areaCounts) {
     const { data } = await sb.from("borough_counts").select("*");
-    const counts = {};
-    (data || []).forEach(r => { counts[r.borough] = r.properties; });
-    S.areas = counts;
+    S.areaCounts = data || [];
   }
 
+  const column = { "Shortlist":"shortlist_count", "All":"all_count",
+                   "New builds":"new_build_count", "Ours":"ours_count",
+                   "Binned":"binned_count" }[S.tab] || "all_count";
+
+  const areas = S.areaCounts
+    .map(r => ({ name: r.borough, n: r[column] || 0 }))
+    .filter(a => a.n > 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   sel.innerHTML = '<option value="">All areas</option>' +
-    Object.keys(S.areas).sort().map(a =>
-      '<option value="' + esc(a) + '" ' + (a === S.area ? "selected" : "") + '>' +
-      esc(a) + ' (' + S.areas[a] + ')</option>').join("");
+    areas.map(a => '<option value="' + esc(a.name) + '" ' +
+      (a.name === S.area ? "selected" : "") + '>' + esc(a.name) +
+      ' (' + a.n + ')</option>').join("");
+
+  // If the chosen borough has nothing on this tab, fall back to all areas
+  // rather than showing an empty list with a filter you cannot see.
+  if (S.area && !areas.some(a => a.name === S.area)) {
+    S.area = "";
+    sel.value = "";
+  }
 }
 
 function render(){
