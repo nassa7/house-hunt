@@ -117,6 +117,7 @@ header > *{max-width:1600px;margin-left:auto;margin-right:auto}
 .pill{position:absolute;top:9px;left:9px;font-size:10.5px;font-weight:700;padding:3px 7px;
   border-radius:6px;background:rgba(0,0,0,.62);color:#fff;letter-spacing:.03em}
 .pill.drop{left:auto;right:9px;background:var(--bad)}
+.pill.gone{top:auto;bottom:9px;left:9px;background:var(--warn)}
 
 .body{padding:12px 14px 14px;display:flex;flex-direction:column;flex:1}
 .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
@@ -286,7 +287,18 @@ const CARD_COLUMNS = [
   "incentives","beds","baths","property_type","epc","commute_mins","vs_area_pct",
   "score","pros","cons","images","is_new_build","first_seen","price_change",
   "days_listed","my_verdict","verdicts","liked_count","hidden","lat","lng",
+  "last_seen",
 ].join(",");
+
+// A property that goes under offer just stops appearing in the portal's search
+// results - nothing announces it. "Have we seen it lately" is the only signal
+// available, so anything missing for a few days is treated as gone.
+const STALE_DAYS = 3;
+
+function daysSince(dateString){
+  if (!dateString) return 999;
+  return Math.floor((Date.now() - new Date(dateString)) / 86400000);
+}
 
 // 60, not 600. The payload was only half the problem: 600 cards with up to ten
 // photos each is ~6,000 <img> elements, which exhausts a phone's memory no
@@ -335,7 +347,10 @@ async function load(){
   S.hasNext = rows.length > PAGE;
   S.rows = rows.slice(0, PAGE).filter(r => {
     if (S.tab === "Binned") return true;          // that tab is the bin itself
-    if (S.tab === "Ours") return true;            // show both opinions
+    // Liked properties are never hidden for going stale: if one you wanted has
+    // gone under offer, that is news, not something to quietly remove.
+    if (S.tab === "Ours") return true;
+    if (daysSince(r.last_seen) > STALE_DAYS) return false;
     return !r.hidden && r.my_verdict !== "binned";
   });
 
@@ -546,6 +561,12 @@ function card(r,i){
   if (inc.toLowerCase().indexOf("deposit") !== -1) h += '<span class="pill">DEPOSIT OFFER</span>';
   else if (r.first_seen === new Date().toISOString().slice(0,10)) h += '<span class="pill">NEW TODAY</span>';
   if (r.price_change < 0) h += '<span class="pill drop">↓ ' + money(Math.abs(r.price_change)) + '</span>';
+  // Off the portals for a few days almost always means sold subject to
+  // contract or under offer - worth flagging rather than quietly dropping.
+  const gone = daysSince(r.last_seen);
+  if (gone > STALE_DAYS) {
+    h += '<span class="pill gone">LIKELY UNDER OFFER · ' + gone + 'd</span>';
+  }
   h += '</div><div class="body">';
 
   h += '<div class="top"><div><span class="price">' + money(showEff?eff:ask) + '</span>' +
