@@ -75,6 +75,13 @@ h1.title{font-size:16px;margin:0;letter-spacing:-.01em}
   background-position:calc(100% - 16px) 55%,calc(100% - 11px) 55%;
   background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:30px}
 .filters input::placeholder{color:var(--muted)}
+.filters.second{grid-template-columns:1fr auto auto;align-items:center}
+.filters.second input{grid-column:auto}
+.filters.second .act{padding:9px 14px;flex:none;width:auto}
+.seen-toggle{font-size:12.5px;color:var(--muted);display:flex;align-items:center;
+  gap:5px;white-space:nowrap;cursor:pointer}
+.card.seen .body{opacity:.72}
+.pill.new{background:var(--good)}
 @media (min-width:620px){
   .filters{display:flex}
   .filters input[type=search]{flex:1}
@@ -183,7 +190,7 @@ const sb = createClient("https://pfbtlbucrpcdoatzlwpj.supabase.co", "sb_publisha
 const root = document.getElementById("root");
 
 const S = { tab:"Shortlist", rows:[], view:[], me:null, profiles:{}, notes:{},
-            area:"", sort:"score", q:"", page:0, hasNext:false };
+            area:"", sort:"score", q:"", page:0, hasNext:false, unseenOnly:false };
 
 function initTheme(){
   const saved = localStorage.getItem("theme");
@@ -311,6 +318,11 @@ async function load(){
   if (S.tab === "New builds") q = q.eq("is_new_build", true);
   if (S.tab === "Ours")       q = q.gt("liked_count", 0);
   if (S.tab === "Binned")     q = q.eq("my_verdict", "binned");
+  // "Unseen only" means no verdict of any kind from me - not liked, not
+  // binned, not yet looked at.
+  if (S.unseenOnly && S.tab !== "Binned" && S.tab !== "Ours") {
+    q = q.is("my_verdict", null);
+  }
 
   // Filtering and sorting happen in Postgres, across all 3,946 properties.
   // Doing it in the browser only ever filtered the page you happened to be on,
@@ -410,7 +422,12 @@ function renderApp(){
       '<option value="price">Cheapest</option>' +
       '<option value="commute">Commute</option>' +
       '<option value="value">Best value</option>' +
-      '<option value="new">Newest</option></select></div></header>' +
+      '<option value="new">Newest</option></select></div>' +
+    '<div class="filters second">' +
+      '<input id="paste" type="url" placeholder="Paste a property URL to add it">' +
+      '<button class="act" id="addUrl">Add</button>' +
+      '<label class="seen-toggle"><input type="checkbox" id="unseen"> Unseen only</label>' +
+    '</div></header>' +
     '<main><div class="grid" id="out"><div class="skel"></div><div class="skel"></div>' +
     '<div class="skel"></div></div></main>';
 
@@ -445,6 +462,34 @@ function renderApp(){
     S.area = e.target.value; S.page = 0; load(); };
   document.querySelector("#sort").onchange = e => {
     S.sort = e.target.value; S.page = 0; load(); };
+
+  // Paste a listing URL. The app cannot fetch it - portals refuse anyone
+  // else's browser - so it is queued and the next pipeline run scores it
+  // properly and it appears like any other property.
+  document.querySelector("#addUrl").onclick = async () => {
+    const box = document.querySelector("#paste");
+    const url = box.value.trim();
+    if (!url) return;
+    const { error } = await sb.from("url_requests")
+      .insert({ url, requested_by: S.me.id });
+    box.value = "";
+    document.querySelector("#count").textContent = error
+      ? "Could not queue that URL"
+      : "Queued - it will appear after the next run";
+  };
+  document.querySelector("#paste").onkeydown = e => {
+    if (e.key === "Enter") document.querySelector("#addUrl").click(); };
+
+  // Hide what you have already looked at, so opening the app shows you the
+  // next 60 rather than the same 60.
+  const unseen = document.querySelector("#unseen");
+  unseen.checked = localStorage.getItem("unseenOnly") === "1";
+  S.unseenOnly = unseen.checked;
+  unseen.onchange = e => {
+    S.unseenOnly = e.target.checked;
+    localStorage.setItem("unseenOnly", e.target.checked ? "1" : "0");
+    S.page = 0; load();
+  };
 }
 
 function renderTabs(){
@@ -518,6 +563,7 @@ function render(){
     html += card(r,i);
   });
   out.innerHTML = html + pager();
+  watchCards();
 }
 
 // Paging happens in the database, not the browser: 3,946 properties is several
@@ -548,7 +594,10 @@ function card(r,i){
   // Only the cover photo becomes an <img>. The rest of the gallery is carried
   // as a data attribute and created when you actually swipe to it - otherwise
   // a page of cards is thousands of image elements.
-  let h = '<div class="card' + (r.my_verdict==="binned" ? " dim" : "") + '" id="c' + i + '">';
+  let h = '<div class="card' + (r.my_verdict==="binned" ? " dim" : "") +
+          (r.my_verdict==="viewed" ? " seen" : "") + '" id="c' + i + '"' +
+          ' data-key="' + esc(r.property_key) + '"' +
+          ' data-verdict="' + esc(r.my_verdict || "") + '">';
   h += '<div class="gal" id="g' + i + '" data-pics="' + esc(pics.join("|")) + '">';
   if (pics.length) h += '<img loading="lazy" class="on" src="' + esc(pics[0]) + '" alt="">';
   if (pics.length > 1) {
@@ -760,6 +809,45 @@ window.setVerdict = setVerdict;
 window.addNote = addNote;
 window.step = step;
 window.goPage = goPage;
+
+// Mark a property as seen once it has genuinely been on screen for a moment.
+// This is what stops the app showing the same 60 houses every time: "viewed"
+// is a verdict like any other, so it is per-person and survives on the server.
+const seenQueue = new Set();
+let seenTimer = null;
+
+function flushSeen(){
+  if (!seenQueue.size || !S.me) return;
+  const rows = [...seenQueue].map(key => ({
+    property_key: key, user_id: S.me.id, verdict: "viewed",
+    updated_at: new Date().toISOString() }));
+  seenQueue.clear();
+  // Only fills the gap - upsert ignores rows where you already liked or
+  // binned it, because those are stronger opinions than "looked at".
+  sb.from("verdicts").upsert(rows, { onConflict: "property_key,user_id",
+                                     ignoreDuplicates: true });
+}
+
+const seenObserver = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    const key = entry.target.dataset.key;
+    const verdict = entry.target.dataset.verdict;
+    if (key && !verdict) {
+      seenQueue.add(key);
+      entry.target.classList.add("seen");
+    }
+    seenObserver.unobserve(entry.target);
+  });
+  clearTimeout(seenTimer);
+  seenTimer = setTimeout(flushSeen, 1500);
+}, { threshold: 0.6 });
+
+function watchCards(){
+  document.querySelectorAll(".card[data-key]").forEach(c => seenObserver.observe(c));
+}
+
+addEventListener("beforeunload", flushSeen);
 
 // Hide the header when scrolling down, reveal it when scrolling up. The small
 // threshold stops it flickering on the tiny scroll jitter a thumb produces.
