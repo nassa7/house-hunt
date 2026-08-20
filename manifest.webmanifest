@@ -1,0 +1,17 @@
+{
+  "name": "House Hunt",
+  "short_name": "House Hunt",
+  "description": "London houses matching our criteria, scored and shared.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f1319",
+  "theme_color": "#0f1319",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png",
+      "purpose": "maskable" }
+  ]
+}

@@ -3,7 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f1319">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f6f8">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1319">
+<!-- Added to the home screen, this runs with no browser chrome on both
+     platforms. Paths are relative because the site lives under a subpath on
+     GitHub Pages, not at the domain root. -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="House Hunt">
+<!-- Translucent means the page draws under the clock and battery, so every
+     fixed edge below pads itself out of the way with the safe-area insets. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <!-- Portal image CDNs block hotlinks by referrer. Sending none means the
      photos load rather than 403ing on someone else's device. -->
 <meta name="referrer" content="no-referrer">
@@ -29,6 +41,7 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:var(--ink);
+  padding-bottom:env(safe-area-inset-bottom);
   font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   -webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -46,7 +59,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 .note-msg{font-size:13px;margin-top:12px;color:var(--muted)}
 
 header{position:sticky;top:0;z-index:30;background:var(--card);
-  border-bottom:1px solid var(--line);padding:10px 14px;
+  border-bottom:1px solid var(--line);
+  padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
   transition:transform .22s ease}
 /* Slides away once you are scrolling down through the list, and comes back the
    moment you scroll up - the filters earn their space only when you want them. */
@@ -81,6 +95,13 @@ h1.title{font-size:16px;margin:0;letter-spacing:-.01em}
 .seen-toggle{font-size:12.5px;color:var(--muted);display:flex;align-items:center;
   gap:5px;white-space:nowrap;cursor:pointer}
 .card.seen .body{opacity:.72}
+.a2hs{position:fixed;left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));
+  z-index:60;display:flex;gap:10px;align-items:center;background:var(--card);
+  border:1px solid var(--line);border-radius:12px;padding:11px 13px;
+  font-size:13.5px;box-shadow:0 6px 24px rgba(0,0,0,.18)}
+.a2hs span{flex:1}
+.a2hs button{background:none;border:0;color:var(--muted);font-size:20px;
+  line-height:1;padding:0 2px;cursor:pointer}
 .pill.new{background:var(--good)}
 @media (min-width:620px){
   .filters{display:flex}
@@ -872,6 +893,29 @@ addEventListener("beforeunload", flushSeen);
   addEventListener("scroll", () => {
     if (!ticking) { ticking = true; requestAnimationFrame(onScroll); }
   }, { passive: true });
+})();
+
+// Android shows its own install prompt. iOS never will - Apple does not
+// implement beforeinstallprompt - so the only route onto the home screen is
+// Share > Add to Home Screen, and nothing tells you that. This does, once,
+// and only while the app is still running inside Safari.
+(() => {
+  const touchMac = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  const iOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || touchMac;
+  const installed = navigator.standalone
+    || matchMedia("(display-mode: standalone)").matches;
+  if (!iOS || installed || localStorage.getItem("a2hs") === "off") return;
+
+  const bar = document.createElement("div");
+  bar.className = "a2hs";
+  bar.innerHTML = "<span>Add this to your home screen: tap Share, then "
+    + "<b>Add to Home Screen</b>.</span>"
+    + "<button aria-label=\"Dismiss\">&times;</button>";
+  bar.querySelector("button").onclick = () => {
+    localStorage.setItem("a2hs", "off");
+    bar.remove();
+  };
+  document.body.appendChild(bar);
 })();
 
 sb.auth.onAuthStateChange((_e, s) => { if (s && !S.me) boot(); });
